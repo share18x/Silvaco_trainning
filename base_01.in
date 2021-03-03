@@ -1,0 +1,411 @@
+go atlas simflags = "-p 8" 
+ 
+# 2D planar 
+# KP.SET2 POL.SET2 
+# fldmob 
+# GaN channel distribution
+# 
+set filename = new_structure
+
+# overall Voltage
+set Vdrian = 10
+
+
+# 80-bit precision: no visible difference in IV curves, sim.time 50% longer
+#go atlas  simflags="-80"
+
+#--------------------------------------
+# Select simulations to be performed:
+set run_transfer_curve = False
+set run_output_curve = False
+set run_output_curve_new = False
+set run_output_curve_old = False
+set run_small_signal = False
+#--------------------------------------
+
+#################  DEVICE GEOMETRY:   ###################################
+
+# Is the 2D model a Half of a Symmetric Device?
+set HalfSym = False
+#--------------------------------------
+
+#==== LENGTHS (X):  ===========================
+# aperture length [um]:
+set Lap=10 
+# gate overlap length [um]:
+set Lgo=3 
+# gate to source distance [um]:
+set Lgs=1 
+# Length of each Source contact [um]:
+set Lsrc=0.5  
+
+set GendLeft = $Lsrc+$Lgs
+set GendRight = $GendLeft+$Lgo+$Lap+$Lgo
+
+# X position of the aperture Left end:
+set XapL = $Lsrc+$Lgs+$Lgo  
+# X position of the aperture Right end:
+set XapR = $XapL+$Lap        
+
+# total device length and device center:
+set devLen = $Lap + 2*($Lgo+$Lgs+$Lsrc)
+set dev_center = 0.5*$devLen
+
+# SCALING FACTOR to obtain Currents in [A/cm2]
+# (active area = between the two Source electrodes):
+set ActiveArea_cm2 = (2*$Lgs+2*$Lgo+$Lap)*1e-8
+set scale_Acm2 = 1.0/$ActiveArea_cm2
+set CurScale = $scale_Acm2
+
+# CURRENT SCALING FACTOR for a SPECIFIC WIDTH [um]:
+# (active area = between the two Source electrodes):
+set Device_Width_um = 75
+#set CurScale = $Device_Width_um
+
+set DevWidthToScaling = $Device_Width_um/$CurScale
+
+# Device Xend and Scaling depend on using the Half-Symmetry model:
+if cond = ( $HalfSym = True ) 
+  set Xend = $dev_center  
+  set GendRight = $dev_center 
+  set CurScale = 2 * $CurScale
+else
+  set Xend = $devLen  
+if.end
+
+#===== THICKNESSES (Y):  =======================
+set TAir = 0.2
+
+set AlGaN_top = 0.2
+set Gate_bottom = $AlGaN_top
+
+# AlGaN layer thickness [um]:
+set AlGaN_thick = 0.030
+set AlGaNbottom = $AlGaN_top + $AlGaN_thick
+
+# 2DEG layer thickness [um] (to enable different mobility):
+set T2DEG = 0.050
+set bottom2DEG = $AlGaNbottom + $T2DEG
+
+# n-type GaN channel thickness [um] (below 2DEG):
+set TGaN1 = 0.100
+set CBLtop = $AlGaNbottom + $T2DEG + $TGaN1
+
+# p-type Current Blocking Layer (CBL) thickness [um]:
+set TGaN2 = 0.3
+
+set CBLbottom=$CBLtop+$TGaN2
+
+# Epitaxial n-type drift region thickness [um]:
+set TGaN3 = 3.0
+
+set DRIFTbottom=$CBLbottom+$TGaN3
+
+# Thickness of n++ GaN Substrate at Drain contact [um]:
+set TGaN4 = 1.0   
+set GaNbottom = $DRIFTbottom + $TGaN4
+
+# Thickness of the Drain contact [um]:
+set Tdrn = 0.2  
+
+#########################  2D MESH:   #####################################
+
+# mesh width in the 3rd (Z) direction = CURRENT SCALING:
+
+# Unit (mA/mm)
+mesh width = 1e6
+
+# left half:
+x.mesh location=0               spacing=0.5*$Lsrc
+x.mesh location=$Lsrc           spacing=0.05
+x.mesh location=$GendLeft-0.5   spacing=0.25
+x.mesh location=$GendLeft       spacing=0.1
+x.mesh location=$GendLeft+0.5   spacing=0.25
+x.mesh location=$XapL-0.2       spacing=0.1
+x.mesh location=$XapL           spacing=0.05
+x.mesh location=$XapL+0.2       spacing=0.1
+x.mesh location=$dev_center     spacing=$Lap/20
+
+y.mesh location=0.0              spacing=0.050
+y.mesh location=$AlGaN_top       spacing=0.002
+y.mesh location=$AlGaNbottom     spacing=0.002
+y.mesh location=$bottom2DEG      spacing=0.005
+y.mesh location=$CBLtop          spacing=0.010
+y.mesh location=$CBLbottom       spacing=0.040
+y.mesh location=$DRIFTbottom-1   spacing=0.5
+y.mesh location=$DRIFTbottom     spacing=0.1
+y.mesh location=$DRIFTbottom+$TGaN4/2  spacing=0.1
+y.mesh location=$GaNbottom             spacing=0.025
+y.mesh location=$GaNbottom+$Tdrn       spacing=0.1
+
+############################################################################
+## Structure Specification - REGIONS:
+
+region num=1 material=AlGaN y.min=$AlGaN_top   y.max=$AlGaNbottom x.min=0 x.max=$Xend x.comp=0.3
+region num=2 material=GaN   y.min=$AlGaNbottom y.max=$bottom2DEG  x.min=0 x.max=$Xend
+region num=3 material=GaN   y.min=$bottom2DEG  y.max=$GaNbottom x.min=0 x.max=$Xend substrate
+region num=4 material=SiN   y.min=0 y.max=$AlGaN_top   x.min=0 x.max=$Xend
+
+##### ELECTRODES (CONTACTS) specification:
+electrode num=1 name=drain  y.min=$GaNbottom y.max=$GaNbottom+$Tdrn  x.min=0 x.max=$Xend
+electrode num=2 name=source y.min=0 y.max=$CBLtop   x.min=0 x.max=$Lsrc
+electrode num=3 name=gate   y.min=0 y.max=$Gate_bottom  x.min=$GendLeft x.max=$GendRight
+
+##### DOPING specification:
+# AlGaN
+doping uniform y.min=$AlGaN_top y.max=$AlGaNbottom  x.min=0 x.max=$Xend n.type conc=1.5e17
+# Undoped GaN buffer over CBL
+doping uniform y.min=$AlGaNbottom  y.max=$CBLtop x.min=0 x.max=$Xend n.type conc=1e13
+doping uniform y.min=$CBLtop-0.020 y.max=$CBLtop x.min=0 x.max=$Xend n.type conc=1e14
+# Epi drift layer
+doping uniform y.min=$CBLtop y.max=$GaNbottom   x.min=0 x.max=$Xend n.type conc=2e16
+# Conductive GaN substrate
+doping uniform y.min=$DRIFTbottom y.max=$GaNbottom  x.min=0 x.max=$Xend n.type conc=1e18
+# p-type doping of Current Blocking Layer (CBL):
+doping uniform y.min=$CBLtop y.max=$CBLbottom x.min=0.0 x.max=$XapL p.type conc=3e17
+
+##### CONTACTS:
+# Intrinsic contact resistance per micron [ohm*um]:
+set Rcont = 300
+# External resistance [ohm] (in circuit) - must use keyword "ohms"
+set Rdrain = 120*$DevWidthToScaling
+
+contact name=drain   resistance=$Rdrain ohms
+#contact name=drain   resistance=$Rcont
+contact name=source  resistance=$Rcont
+contact name=gate    workfun=5.0
+
+material material=SiN permittivity=7.5 
+ 
+#AlGaN SET.2 
+material KP.SET2 POL.SET2 print 
+ 
+#
+models k.p print srh 
+mobility fldmob.n MUN=1400 TMUN=1 VSATN=1.3e7 BETAN=0.8 
+ 
+ 
+ 
+models TEN.PIEZO CALC.STRAIN TENSOR.SCALE=0 PSP.SCALE=1 PIEZO.SCALE=1 
+ 
+output band.param con.band val.band charge traps qss polar.charge e.mobility h.mobility
+ 
+ 
+ 
+#=====================  RUN SOLUTION ==============================
+# solve initial and zero-bias DC solution:
+solve initial
+solve previous  
+
+save outf = $"filename"_initial.str 
+tonyplot $"filename"_initial.str 
+
+# Extract 2DEG surface density [per cm2]:
+extract init infile = "$'filename'_initial.str"
+extract name="2DEG_density" 1e-4 * area from curve(depth, impurity="Electron Conc" \
+        material="All" mat.occno=1 x.val=($Lsrc+$Lgs/2) ) \
+	where x.min=$AlGaNtop and x.max=$CBLtop 
+	
+###################################################################
+
+if cond = ( $run_transfer_curve = True ) 
+
+	##---------- Id-Vg curves, for various Vds:  ------------------------
+	
+	####  OFF state:
+	solve vgate = -0.05
+	solve name = gate vstep = -0.1	vfinal = -2
+	solve name = gate vstep = -0.5	vfinal = -10
+	                        
+	save outfile = $"filename"_Vg-10V_Vd0V.str
+	
+	#### Repeat (loop) for various Vds values:
+	loop steps = 2
+	
+		assign name = Vds  n.value = (6, 10)
+		
+		load infile = $"filename"_Vg-10V_Vd0V.str master
+		
+		solve previous 
+		solve vdrain = 0.3
+		solve vdrain = 1
+		solve vdrain = 1.5
+		solve vdrain = 2.5
+		solve vdrain = 3
+		solve vstep = 1 vfinal = $Vds name = drain
+		
+		log outfile = $'filename'_Vds=$'Vds'V.log
+		solve vgate = -10
+		solve vstep = 0.5 vfinal = -7.0 name = gate
+		solve vstep = 0.2 vfinal =  0.0 name = gate
+		
+		## Transconductance (dId/dVg):
+		extract init infile = "$'filename'_Vds=$'Vds'V.log"
+		extract name = "gm"  deriv(v."gate", i."drain") outfile = "$'filename'_gm_Vds=$'Vds'V.dat"
+		extract name = "peak_gm_$'Vds'V" max(deriv(v."gate", i."drain"))
+		log off
+		
+	l.end
+	tonyplot -overlay $'filename'_Vds=*V.log 
+	tonyplot -overlay $'filename'_gm_Vds=*V.dat
+
+if.end
+
+## extract I-V Characteristic
+#extract init inf = "$'filename'_transfer_curve.log"
+#extract name = "Vt" xintercept(maxslope(curve(v."gate",i."drain")))
+#extract name = "Id_max" max(i."drain")
+#extract name = "gm_Characterise" deriv(v."gate", i."drain") outfile = "transfer_g.dat"
+#tonyplot transfer_g.dat -set Conductance
+#extract name = "gm_max" max(deriv(v."gate", i."drain"))
+#extract name = "Voltage_gm" x.val from deriv(v."gate", i."drain") where y.val = max(deriv(v."gate", i."drain"))
+
+###################################################################
+
+if cond = ( $run_output_curve = True ) 
+	
+	##---------- Id-Vd curves, for various Vg:  ---------------------
+	
+	load infile = $"filename"_initial.str master
+	solve previous
+	save outfile = $"filename"_Vg_computed.str 
+	
+	loop steps=4
+		
+		assign name = Vg  n.value = (0, -2, -4, -6)
+		
+		load infile = $"filename"_Vg_computed.str master
+		solve previous 
+		solve name = gate vstep=-0.1 vfinal=$Vg
+		save outfile = $"filename"_Vg_computed.str 
+		
+		log outfile = $"filename"_Vg=$'Vg'V.log
+		solve vdrain = 0.0 
+		solve name = drain vstep = 0.5 vfinal = 10
+		log off
+	
+	l.end
+	
+	tonyplot -overlay $"filename"_Vg=*V.log
+if.end
+
+###################################################################
+
+set Ostep = 0.5
+# from positive to negative
+set Ogate = 0
+set Ospace = 2
+set curve_n = 5
+
+set Vdrian = 10
+
+if cond = ( $run_output_curve_new = True ) 
+	
+	##---------- Id-Vd curves, for various Vg:  ---------------------
+	
+	load infile = $"filename"_initial.str master
+	solve previous
+	save outfile = $"filename"_Vg_computed.str 
+	
+	loop steps = $curve_n
+		
+		
+		load infile = $"filename"_Vg_computed.str master
+		solve previous 
+		solve name = gate vstep = -0.1 vfinal = $Ogate
+		save outfile = $"filename"_Vg_computed.str 
+		
+		log outfile = $"filename"_Vg=$'Ogate'V.log
+		solve prev vdrain = 0
+		solve vdrain = 0.1
+		solve vdrain = 0.3
+		solve vdrain = 0.5 vstep = $Ostep vfinal = $Vdrian name = drain
+		log off
+		
+		set Ogate = $Ogate - $Ospace
+	
+	l.end
+	
+	tonyplot -overlay $"filename"_Vg=*V.log
+	
+if.end
+
+###################################################################
+# output_curve_old
+if cond = ( $run_output_curve_old = True )
+	set Ostep = 0.5
+	# from positive to negative
+	set Ogate = 0
+	set Ospace = 2
+	set curve_n = 5
+	solve init
+	
+	loop steps = $curve_n 
+		method newton 
+		#trap itlim = 35 maxtrap = 16
+		solve prev vgate = $Ogate outf = $"filename"_Vgate=$"Ogate"
+		set Ogate = $Ogate - $Ospace
+	l.end
+	
+	loop steps = $curve_n
+		set Ogate = $Ogate + $Ospace
+	l.end
+	
+	loop steps = $curve_n 
+		load inf = $"filename"_Vgate=$"Ogate"
+		log outf = $"filename"_output_curve_Vdrain=$"Vdrian"v_Vgate=$"Ogate"v.log
+		solve prev vdrain = 0
+		solve vdrain = 0.1
+		solve vdrain = 0.3
+		solve vdrain = 0.5 vstep = $Ostep vfinal = $Vdrian name = drain
+		log off
+		set Ogate = $Ogate - $Ospace
+	l.end
+	
+	tonyplot -overlay $"filename"_output_curve_Vdrain=$"Vdrian"v_Vgate=*v.log -set Output_Curve
+
+if.end
+
+############################################################
+# frequency characteristics
+if cond = ( $run_small_signal = True )
+	
+	set Vmin = $Voltage_gm - 1
+	set Vmax = $Voltage_gm + 1
+	set Fstep = 0.1
+	set curve_n = ($Vmax - $Vmin) / $Fstep + 1
+	
+	solve init
+	
+	solve prev vdrain = 0.3
+	solve vdrain = 0.5 vstep = 0.5 vfinal = $Vdrian name = drain
+	method newton carriers = 2
+	solve prev vstep = -0.5 vfinal = $Vmax + 1 name = gate
+	
+	loop steps = $curve_n 
+		
+		solve vgate = $Vmax
+		
+		log outf = $"filename"_small_signal_Vgate=$"Vmax"v.log gains s.param INPORT = gate OUTPORT = drain width = 100
+		
+		solve prev ac freq = 10e5 fstep = 10 mult.f nfstep = 2
+		solve prev ac freq = 1e9
+		solve prev ac freq = 2e9 fstep = 2e9 nfstep = 3
+		solve prev ac freq = 1e10 fstep = 5e9 nfstep = 50
+		tonyplot $"filename"_small_signal_Vgate=$"Vmax"v.log -set small_signal
+		
+		log off width = 100
+		
+		# extract fT fmax
+		extract init inf = "$'filename'_small_signal_Vgate=$'Vmax'v.log"
+		#extract name = "f_T" xintercept(maxslope(curve(frequency, abs(elect."Current gain"))))
+		#extract name = "f_max" xintercept(maxslope(curve(frequency, abs(elect."Unilateral power gain"))))
+		extract name = "f_T_Vgate=$'Vmax'v" x.val from curve(frequency, elect."Current gain") where y.val = 0
+		extract name = "f_max_Vgate=$'Vmax'v" x.val from curve(frequency, elect."Unilateral power gain") where y.val = 0
+		
+		set Vmax = $Vmax - $Fstep
+	
+	l.end
+if.end
+
+quit 
